@@ -20,18 +20,18 @@ pub struct SemanticIndexConfig {
 }
 
 impl SemanticIndexConfig {
-    pub fn new(workspace_root: &Path, semantic: Option<SemanticIndexConfigToml>) -> Self {
+    pub fn new(
+        workspace_root: &Path,
+        semantic: Option<SemanticIndexConfigToml>,
+    ) -> std::io::Result<Self> {
         let semantic = semantic.unwrap_or_default();
-        let dir = semantic
-            .dir
-            .map(|dir| AbsolutePathBuf::resolve_path_against_base(dir, workspace_root))
-            .unwrap_or_else(|| {
-                AbsolutePathBuf::resolve_path_against_base(
-                    DEFAULT_SEMANTIC_INDEX_DIR,
-                    workspace_root,
-                )
-            })
-            .expect("semantic index dir should resolve");
+        let dir = match semantic.dir {
+            Some(dir) => AbsolutePathBuf::resolve_path_against_base(dir, workspace_root)?,
+            None => AbsolutePathBuf::resolve_path_against_base(
+                DEFAULT_SEMANTIC_INDEX_DIR,
+                workspace_root,
+            )?,
+        };
         let chunk = ChunkingConfig {
             max_lines: semantic
                 .chunk
@@ -63,7 +63,7 @@ impl SemanticIndexConfig {
             "loaded semantic index config",
         );
 
-        Self {
+        Ok(Self {
             enabled: semantic.enabled.unwrap_or(true),
             dir,
             embedding_model: semantic
@@ -71,7 +71,7 @@ impl SemanticIndexConfig {
                 .unwrap_or_else(|| DEFAULT_SEMANTIC_INDEX_MODEL.to_string()),
             chunk,
             retrieve,
-        }
+        })
     }
 }
 
@@ -117,7 +117,8 @@ mod tests {
     #[test]
     fn defaults_resolve_workspace_relative_dir() {
         let workspace = tempdir().expect("tempdir");
-        let config = SemanticIndexConfig::new(workspace.path(), None);
+        let config =
+            SemanticIndexConfig::new(workspace.path(), None).expect("semantic index config");
 
         let expected_dir = AbsolutePathBuf::resolve_path_against_base(
             DEFAULT_SEMANTIC_INDEX_DIR,
@@ -155,7 +156,8 @@ mod tests {
             },
         };
 
-        let config = SemanticIndexConfig::new(workspace.path(), Some(semantic));
+        let config =
+            SemanticIndexConfig::new(workspace.path(), Some(semantic)).expect("semantic index");
 
         let expected_dir =
             AbsolutePathBuf::resolve_path_against_base("custom-index", workspace.path())

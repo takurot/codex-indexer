@@ -1248,8 +1248,8 @@ impl Config {
             .unwrap_or_else(default_review_model);
 
         let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
-        let cache = CacheConfig::new(&codex_home, cfg.cache);
-        let semantic_index = SemanticIndexConfig::new(&resolved_cwd, cfg.semantic_index);
+        let cache = CacheConfig::new(&codex_home, cfg.cache)?;
+        let semantic_index = SemanticIndexConfig::new(&resolved_cwd, cfg.semantic_index)?;
 
         // Ensure that every field of ConfigRequirements is applied to the final
         // Config.

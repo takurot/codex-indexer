@@ -38,17 +38,17 @@ pub struct CacheConfig {
 }
 
 impl CacheConfig {
-    pub fn new(codex_home: &Path, cache: Option<CacheConfigToml>) -> Self {
+    pub fn new(codex_home: &Path, cache: Option<CacheConfigToml>) -> std::io::Result<Self> {
         let cache = cache.unwrap_or_default();
         let default_ttl = Duration::from_secs(
             cache
                 .default_ttl_sec
                 .unwrap_or(DEFAULT_CACHE_DEFAULT_TTL_SECS),
         );
-        let dir = cache.dir.unwrap_or_else(|| {
-            AbsolutePathBuf::resolve_path_against_base(DEFAULT_CACHE_DIR_NAME, codex_home)
-                .expect("default cache dir should resolve")
-        });
+        let dir = match cache.dir {
+            Some(dir) => dir,
+            None => AbsolutePathBuf::resolve_path_against_base(DEFAULT_CACHE_DIR_NAME, codex_home)?,
+        };
         let mut tool_ttl = CacheToolTtl::default();
         tool_ttl.override_with(&cache.tool_ttl_sec);
 
@@ -61,13 +61,13 @@ impl CacheConfig {
             "loaded cache config",
         );
 
-        Self {
+        Ok(Self {
             enabled: cache.enabled.unwrap_or(true),
             dir,
             max_bytes: cache.max_bytes.unwrap_or(DEFAULT_CACHE_MAX_BYTES),
             default_ttl,
             tool_ttl,
-        }
+        })
     }
 
     pub fn ttl_for(&self, tool: CacheableTool) -> Duration {
@@ -141,7 +141,7 @@ mod tests {
     fn defaults_use_codex_home_and_tool_overrides() {
         let codex_home = tempdir().expect("tempdir");
 
-        let config = CacheConfig::new(codex_home.path(), None);
+        let config = CacheConfig::new(codex_home.path(), None).expect("cache config");
 
         let expected_dir =
             AbsolutePathBuf::resolve_path_against_base(DEFAULT_CACHE_DIR_NAME, codex_home.path())
@@ -185,7 +185,7 @@ mod tests {
             },
         };
 
-        let config = CacheConfig::new(codex_home.path(), Some(cache));
+        let config = CacheConfig::new(codex_home.path(), Some(cache)).expect("cache config");
 
         assert!(!config.enabled);
         assert_eq!(config.dir, cache_dir);
