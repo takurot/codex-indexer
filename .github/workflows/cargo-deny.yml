@@ -23,4 +23,4 @@ jobs:
         run: cargo install cargo-deny --locked --version 0.16.1
 
       - name: Run cargo-deny
-        run: cargo deny check --all-features --manifest-path ./codex-rs/Cargo.toml
+        run: cargo deny check --manifest-path ./codex-rs/Cargo.toml -- --all-features
