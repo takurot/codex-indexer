@@ -32,7 +32,6 @@ use crate::protocol::AskForApproval;
 use crate::protocol::SandboxPolicy;
 use crate::semantic::config::SemanticIndexConfig;
 use crate::semantic::config::SemanticIndexConfigToml;
-use crate::util::resolve_path;
 use codex_app_server_protocol::Tools;
 use codex_app_server_protocol::UserSavedConfig;
 use codex_protocol::config_types::ForcedLoginMethod;
