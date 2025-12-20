@@ -1,4 +1,6 @@
 use crate::auth::AuthCredentialsStoreMode;
+use crate::cache::config::CacheConfig;
+use crate::cache::config::CacheConfigToml;
 use crate::config::types::DEFAULT_OTEL_ENVIRONMENT;
 use crate::config::types::History;
 use crate::config::types::McpServerConfig;
@@ -28,6 +30,8 @@ use crate::project_doc::DEFAULT_PROJECT_DOC_FILENAME;
 use crate::project_doc::LOCAL_PROJECT_DOC_FILENAME;
 use crate::protocol::AskForApproval;
 use crate::protocol::SandboxPolicy;
+use crate::semantic::config::SemanticIndexConfig;
+use crate::semantic::config::SemanticIndexConfigToml;
 use codex_app_server_protocol::Tools;
 use codex_app_server_protocol::UserSavedConfig;
 use codex_protocol::config_types::ForcedLoginMethod;
@@ -217,6 +221,12 @@ pub struct Config {
     /// Directory containing all Codex state (defaults to `~/.codex` but can be
     /// overridden by the `CODEX_HOME` environment variable).
     pub codex_home: PathBuf,
+
+    /// Settings that control persistent cache storage.
+    pub cache: CacheConfig,
+
+    /// Settings for semantic indexing.
+    pub semantic_index: SemanticIndexConfig,
 
     /// Settings that govern if and what will be written to `~/.codex/history.jsonl`.
     pub history: History,
@@ -681,6 +691,14 @@ pub struct ConfigToml {
 
     /// Token budget applied when storing tool/function outputs in the context manager.
     pub tool_output_token_limit: Option<usize>,
+
+    /// Persistent cache settings.
+    #[serde(default)]
+    pub cache: Option<CacheConfigToml>,
+
+    /// Semantic index settings.
+    #[serde(default)]
+    pub semantic_index: Option<SemanticIndexConfigToml>,
 
     /// Profile to use from the `profiles` map.
     pub profile: Option<String>,
@@ -1230,6 +1248,8 @@ impl Config {
             .unwrap_or_else(default_review_model);
 
         let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
+        let cache = CacheConfig::new(&codex_home, cfg.cache)?;
+        let semantic_index = SemanticIndexConfig::new(&resolved_cwd, cfg.semantic_index)?;
 
         // Ensure that every field of ConfigRequirements is applied to the final
         // Config.
@@ -1283,6 +1303,8 @@ impl Config {
                 .collect(),
             tool_output_token_limit: cfg.tool_output_token_limit,
             codex_home,
+            cache,
+            semantic_index,
             history,
             file_opener: cfg.file_opener.unwrap_or(UriBasedFileOpener::VsCode),
             codex_linux_sandbox_exe,
@@ -1442,6 +1464,13 @@ pub fn log_dir(cfg: &Config) -> std::io::Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use crate::cache::config::CacheConfig;
+    use crate::cache::config::CacheToolTtl;
+    use crate::cache::config::DEFAULT_CACHE_DEFAULT_TTL_SECS;
+    use crate::cache::config::DEFAULT_CACHE_DIR_NAME;
+    use crate::cache::config::DEFAULT_CACHE_GREP_FILES_TTL_SECS;
+    use crate::cache::config::DEFAULT_CACHE_MAX_BYTES;
+    use crate::cache::config::DEFAULT_CACHE_READ_FILE_TTL_SECS;
     use crate::config::edit::ConfigEdit;
     use crate::config::edit::ConfigEditsBuilder;
     use crate::config::edit::apply_blocking;
@@ -1449,13 +1478,57 @@ mod tests {
     use crate::config::types::McpServerTransportConfig;
     use crate::config::types::Notifications;
     use crate::features::Feature;
+    use crate::semantic::config::ChunkingConfig;
+    use crate::semantic::config::DEFAULT_SEMANTIC_INDEX_CHUNK_MAX_LINES;
+    use crate::semantic::config::DEFAULT_SEMANTIC_INDEX_DIR;
+    use crate::semantic::config::DEFAULT_SEMANTIC_INDEX_MODEL;
+    use crate::semantic::config::DEFAULT_SEMANTIC_INDEX_RETRIEVE_MAX_CHARS;
+    use crate::semantic::config::DEFAULT_SEMANTIC_INDEX_RETRIEVE_TOP_K;
+    use crate::semantic::config::RetrieveConfig;
+    use crate::semantic::config::SemanticIndexConfig;
 
     use super::*;
+    use codex_utils_absolute_path::AbsolutePathBuf;
     use core_test_support::test_absolute_path;
     use pretty_assertions::assert_eq;
 
+    use std::path::Path;
     use std::time::Duration;
     use tempfile::TempDir;
+
+    fn default_cache_config(codex_home: &Path) -> CacheConfig {
+        CacheConfig {
+            enabled: true,
+            dir: AbsolutePathBuf::resolve_path_against_base(DEFAULT_CACHE_DIR_NAME, codex_home)
+                .expect("cache dir"),
+            max_bytes: DEFAULT_CACHE_MAX_BYTES,
+            default_ttl: Duration::from_secs(DEFAULT_CACHE_DEFAULT_TTL_SECS),
+            tool_ttl: CacheToolTtl {
+                read_file: Some(Duration::from_secs(DEFAULT_CACHE_READ_FILE_TTL_SECS)),
+                list_dir: None,
+                grep_files: Some(Duration::from_secs(DEFAULT_CACHE_GREP_FILES_TTL_SECS)),
+            },
+        }
+    }
+
+    fn default_semantic_index_config(workspace_root: &Path) -> SemanticIndexConfig {
+        SemanticIndexConfig {
+            enabled: true,
+            dir: AbsolutePathBuf::resolve_path_against_base(
+                DEFAULT_SEMANTIC_INDEX_DIR,
+                workspace_root,
+            )
+            .expect("semantic index dir"),
+            embedding_model: DEFAULT_SEMANTIC_INDEX_MODEL.to_string(),
+            chunk: ChunkingConfig {
+                max_lines: DEFAULT_SEMANTIC_INDEX_CHUNK_MAX_LINES,
+            },
+            retrieve: RetrieveConfig {
+                top_k: DEFAULT_SEMANTIC_INDEX_RETRIEVE_TOP_K,
+                max_chars: DEFAULT_SEMANTIC_INDEX_RETRIEVE_MAX_CHARS,
+            },
+        }
+    }
 
     #[test]
     fn test_toml_parsing() {
@@ -3063,6 +3136,8 @@ model_verbosity = "high"
                 project_doc_fallback_filenames: Vec::new(),
                 tool_output_token_limit: None,
                 codex_home: fixture.codex_home(),
+                cache: default_cache_config(fixture.codex_home().as_path()),
+                semantic_index: default_semantic_index_config(fixture.cwd().as_path()),
                 history: History::default(),
                 file_opener: UriBasedFileOpener::VsCode,
                 codex_linux_sandbox_exe: None,
@@ -3138,6 +3213,8 @@ model_verbosity = "high"
             project_doc_fallback_filenames: Vec::new(),
             tool_output_token_limit: None,
             codex_home: fixture.codex_home(),
+            cache: default_cache_config(fixture.codex_home().as_path()),
+            semantic_index: default_semantic_index_config(fixture.cwd().as_path()),
             history: History::default(),
             file_opener: UriBasedFileOpener::VsCode,
             codex_linux_sandbox_exe: None,
@@ -3228,6 +3305,8 @@ model_verbosity = "high"
             project_doc_fallback_filenames: Vec::new(),
             tool_output_token_limit: None,
             codex_home: fixture.codex_home(),
+            cache: default_cache_config(fixture.codex_home().as_path()),
+            semantic_index: default_semantic_index_config(fixture.cwd().as_path()),
             history: History::default(),
             file_opener: UriBasedFileOpener::VsCode,
             codex_linux_sandbox_exe: None,
@@ -3304,6 +3383,8 @@ model_verbosity = "high"
             project_doc_fallback_filenames: Vec::new(),
             tool_output_token_limit: None,
             codex_home: fixture.codex_home(),
+            cache: default_cache_config(fixture.codex_home().as_path()),
+            semantic_index: default_semantic_index_config(fixture.cwd().as_path()),
             history: History::default(),
             file_opener: UriBasedFileOpener::VsCode,
             codex_linux_sandbox_exe: None,
