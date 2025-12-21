@@ -101,7 +101,7 @@ impl CacheStore for DiskCacheStore {
         let mut index = self
             .inner
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "cache lock poisoned"))?;
+            .map_err(|_| std::io::Error::other("cache lock poisoned"))?;
         let (ttl_secs, value) = {
             let entry = match index.entries.get_mut(key) {
                 Some(entry) => entry,
@@ -140,7 +140,7 @@ impl CacheStore for DiskCacheStore {
         let mut index = self
             .inner
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "cache lock poisoned"))?;
+            .map_err(|_| std::io::Error::other("cache lock poisoned"))?;
         let size_bytes = entry.value.len() as u64;
         if size_bytes > self.max_bytes {
             return Ok(CacheStorePutOutcome { evicted: 0 });
@@ -176,7 +176,7 @@ impl CacheStore for DiskCacheStore {
         let mut index = self
             .inner
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "cache lock poisoned"))?;
+            .map_err(|_| std::io::Error::other("cache lock poisoned"))?;
         index.remove_entry(key, &self.entries_path)?;
         self.persist_index(&index)?;
         Ok(())
@@ -186,7 +186,7 @@ impl CacheStore for DiskCacheStore {
         let mut index = self
             .inner
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "cache lock poisoned"))?;
+            .map_err(|_| std::io::Error::other("cache lock poisoned"))?;
         index.clear(&self.entries_path)?;
         self.persist_index(&index)?;
         Ok(())
@@ -196,7 +196,7 @@ impl CacheStore for DiskCacheStore {
         let index = self
             .inner
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "cache lock poisoned"))?;
+            .map_err(|_| std::io::Error::other("cache lock poisoned"))?;
         Ok(CacheStoreStats {
             entries: index.entries.len(),
             total_bytes: index.total_bytes,

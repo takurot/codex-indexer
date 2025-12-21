@@ -174,22 +174,22 @@ impl ToolHandler for ReadFileHandler {
             None
         };
 
-        if let Some(cache_key) = cache_key.as_ref() {
-            if let Some(cached) = cache_manager.get(cache_key) {
-                match String::from_utf8(cached) {
-                    Ok(content) => {
-                        return Ok(ToolOutput::Function {
-                            content,
-                            content_items: None,
-                            success: Some(true),
-                        });
-                    }
-                    Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "failed to decode cached read_file output: {err}"
-                        );
-                    }
+        if let Some(cache_key) = cache_key.as_ref()
+            && let Some(cached) = cache_manager.get(cache_key)
+        {
+            match String::from_utf8(cached) {
+                Ok(content) => {
+                    return Ok(ToolOutput::Function {
+                        content,
+                        content_items: None,
+                        success: Some(true),
+                    });
+                }
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "failed to decode cached read_file output: {err}"
+                    );
                 }
             }
         }
