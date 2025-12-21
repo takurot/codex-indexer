@@ -20,6 +20,10 @@ By comparison, the non-interactive mode (`codex exec`) defaults to `RUST_LOG=err
 
 See the Rust documentation on [`RUST_LOG`](https://docs.rs/env_logger/latest/env_logger/#enabling-logging) for more information on the configuration options.
 
+## Cache management
+
+Use `codex cache status` to inspect cached entries (count, size, hit rate) and `codex cache clear` to remove cached data.
+
 ## Model Context Protocol (MCP)
 
 The Codex CLI and IDE extension is a MCP client which means that it can be configured to connect to MCP servers. For more information, refer to the [`config docs`](./config.md#mcp-integration).

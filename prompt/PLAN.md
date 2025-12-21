@@ -39,6 +39,8 @@
 
 #### PR-1：増分キャッシュ（read_file / list_dir のみ）
 
+* 状態：実装済み（read_file/list_dir のキャッシュ統合、ディスクLRUストア、CLI `cache status/clear` 追加、`docs/advanced.md` 更新）
+* テスト：`SHELL=/bin/bash CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_cli_rs CARGO_INCREMENTAL=0 cargo test -p codex-core -- --test-threads=1` はローカルの120sタイムアウトで完走せず。`suite::approvals::approval_matrix_covers_all_modes` と `suite::tool_parallelism::shell_tools_start_before_response_completed_when_stream_delayed` は個別実行でパス。
 * 目的：体感速度が出る“安全なキャッシュ”から入る（副作用がない）
 * 変更対象
 
