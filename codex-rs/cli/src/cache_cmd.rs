@@ -31,7 +31,7 @@ pub(crate) async fn run_cache_command(cmd: CacheCommand) -> anyhow::Result<()> {
         ConfigOverrides::default(),
     )
     .await?;
-    let cache_manager = CacheManager::new(config.cache.clone())?;
+    let cache_manager = CacheManager::new(config.cache)?;
 
     match cmd.subcommand {
         CacheSubcommand::Status => {
