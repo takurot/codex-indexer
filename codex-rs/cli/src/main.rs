@@ -30,10 +30,12 @@ use owo_colors::OwoColorize;
 use std::path::PathBuf;
 use supports_color::Stream;
 
+mod cache_cmd;
 mod mcp_cmd;
 #[cfg(not(windows))]
 mod wsl_paths;
 
+use crate::cache_cmd::CacheCommand;
 use crate::mcp_cmd::McpCli;
 
 use codex_core::config::Config;
@@ -100,6 +102,9 @@ enum Subcommand {
 
     /// Generate shell completion scripts.
     Completion(CompletionCommand),
+
+    /// Manage local cache entries.
+    Cache(CacheCommand),
 
     /// Run commands within a Codex-provided sandbox.
     #[clap(visible_alias = "debug")]
@@ -548,6 +553,13 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
         }
         Some(Subcommand::Completion(completion_cli)) => {
             print_completion(completion_cli);
+        }
+        Some(Subcommand::Cache(mut cache_cli)) => {
+            prepend_config_flags(
+                &mut cache_cli.config_overrides,
+                root_config_overrides.clone(),
+            );
+            cache_cmd::run_cache_command(cache_cli).await?;
         }
         Some(Subcommand::Cloud(mut cloud_cli)) => {
             prepend_config_flags(

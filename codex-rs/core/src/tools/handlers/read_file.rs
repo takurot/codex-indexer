@@ -4,7 +4,12 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use codex_utils_string::take_bytes_at_char_boundary;
 use serde::Deserialize;
+use serde::Serialize;
+use tracing::warn;
 
+use crate::cache::LOG_TARGET;
+use crate::cache::config::CacheableTool;
+use crate::cache::tool_cache::build_tool_cache_key_for_path;
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
@@ -21,7 +26,7 @@ const TAB_WIDTH: usize = 4;
 const COMMENT_PREFIXES: &[&str] = &["#", "//", "--"];
 
 /// JSON arguments accepted by the `read_file` tool handler.
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct ReadFileArgs {
     /// Absolute path to the file that will be read.
     file_path: String,
@@ -39,14 +44,14 @@ struct ReadFileArgs {
     indentation: Option<IndentationArgs>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum ReadMode {
     Slice,
     Indentation,
 }
 /// Additional configuration for indentation-aware reads.
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 struct IndentationArgs {
     /// Optional explicit anchor line; defaults to `offset` when omitted.
     #[serde(default)]
@@ -96,7 +101,13 @@ impl ToolHandler for ReadFileHandler {
     }
 
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError> {
-        let ToolInvocation { payload, .. } = invocation;
+        let ToolInvocation {
+            payload,
+            session,
+            turn,
+            tool_name,
+            ..
+        } = invocation;
 
         let arguments = match payload {
             ToolPayload::Function { arguments } => arguments,
@@ -110,6 +121,11 @@ impl ToolHandler for ReadFileHandler {
         let args: ReadFileArgs = serde_json::from_str(&arguments).map_err(|err| {
             FunctionCallError::RespondToModel(format!(
                 "failed to parse function arguments: {err:?}"
+            ))
+        })?;
+        let arguments_value = serde_json::to_value(&args).map_err(|err| {
+            FunctionCallError::RespondToModel(format!(
+                "failed to serialize function arguments: {err}"
             ))
         })?;
 
@@ -140,6 +156,44 @@ impl ToolHandler for ReadFileHandler {
             ));
         }
 
+        let cache_manager = session.cache_manager();
+        let cache_key = if cache_manager.enabled() {
+            match build_tool_cache_key_for_path(&tool_name, &arguments_value, &turn.cwd, &path)
+                .await
+            {
+                Ok(key) => Some(key),
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "failed to compute cache key for read_file: {err}"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        if let Some(cache_key) = cache_key.as_ref()
+            && let Some(cached) = cache_manager.get(cache_key)
+        {
+            match String::from_utf8(cached) {
+                Ok(content) => {
+                    return Ok(ToolOutput::Function {
+                        content,
+                        content_items: None,
+                        success: Some(true),
+                    });
+                }
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "failed to decode cached read_file output: {err}"
+                    );
+                }
+            }
+        }
+
         let collected = match mode {
             ReadMode::Slice => slice::read(&path, offset, limit).await?,
             ReadMode::Indentation => {
@@ -147,8 +201,16 @@ impl ToolHandler for ReadFileHandler {
                 indentation::read_block(&path, offset, limit, indentation).await?
             }
         };
+        let content = collected.join("\n");
+        if let Some(cache_key) = cache_key {
+            cache_manager.put(
+                cache_key,
+                content.as_bytes().to_vec(),
+                cache_manager.ttl_for(CacheableTool::ReadFile),
+            );
+        }
         Ok(ToolOutput::Function {
-            content: collected.join("\n"),
+            content,
             content_items: None,
             success: Some(true),
         })

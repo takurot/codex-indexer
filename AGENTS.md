@@ -77,6 +77,12 @@ If you don’t have the tool:
 - Prefer deep equals comparisons whenever possible. Perform `assert_eq!()` on entire objects, rather than individual fields.
 - Avoid mutating process environment in tests; prefer passing environment-derived flags or dependencies from above.
 
+## CI notes
+
+- cargo-deny must understand Rust edition 2024; use cargo-deny >= 0.18.9 and run `cargo deny check` from the repo root (avoid `--manifest-path` and `--all-features`, which are not supported by cargo-deny).
+- `scripts/stage_npm_packages.py` requires a published rust-release version; if this fork does not publish releases, gate the staging step on `push` or update the version to one that exists.
+- clippy denies `expect`/`unwrap` in core code; prefer returning `Result` and propagating errors instead of panicking in config/setup paths.
+
 ### Integration tests (core)
 
 - Prefer the utilities in `core_test_support::responses` when writing end-to-end Codex tests.

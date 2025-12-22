@@ -7,8 +7,13 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use codex_utils_string::take_bytes_at_char_boundary;
 use serde::Deserialize;
+use serde::Serialize;
 use tokio::fs;
+use tracing::warn;
 
+use crate::cache::LOG_TARGET;
+use crate::cache::config::CacheableTool;
+use crate::cache::tool_cache::build_tool_cache_key_for_path;
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
@@ -33,7 +38,7 @@ fn default_depth() -> usize {
     2
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct ListDirArgs {
     dir_path: String,
     #[serde(default = "default_offset")]
@@ -51,7 +56,13 @@ impl ToolHandler for ListDirHandler {
     }
 
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError> {
-        let ToolInvocation { payload, .. } = invocation;
+        let ToolInvocation {
+            payload,
+            session,
+            turn,
+            tool_name,
+            ..
+        } = invocation;
 
         let arguments = match payload {
             ToolPayload::Function { arguments } => arguments,
@@ -65,6 +76,11 @@ impl ToolHandler for ListDirHandler {
         let args: ListDirArgs = serde_json::from_str(&arguments).map_err(|err| {
             FunctionCallError::RespondToModel(format!(
                 "failed to parse function arguments: {err:?}"
+            ))
+        })?;
+        let arguments_value = serde_json::to_value(&args).map_err(|err| {
+            FunctionCallError::RespondToModel(format!(
+                "failed to serialize function arguments: {err}"
             ))
         })?;
 
@@ -100,12 +116,58 @@ impl ToolHandler for ListDirHandler {
             ));
         }
 
+        let cache_manager = session.cache_manager();
+        let cache_key = if cache_manager.enabled() {
+            match build_tool_cache_key_for_path(&tool_name, &arguments_value, &turn.cwd, &path)
+                .await
+            {
+                Ok(key) => Some(key),
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "failed to compute cache key for list_dir: {err}"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        if let Some(cache_key) = cache_key.as_ref()
+            && let Some(cached) = cache_manager.get(cache_key)
+        {
+            match String::from_utf8(cached) {
+                Ok(content) => {
+                    return Ok(ToolOutput::Function {
+                        content,
+                        content_items: None,
+                        success: Some(true),
+                    });
+                }
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "failed to decode cached list_dir output: {err}"
+                    );
+                }
+            }
+        }
+
         let entries = list_dir_slice(&path, offset, limit, depth).await?;
         let mut output = Vec::with_capacity(entries.len() + 1);
         output.push(format!("Absolute path: {}", path.display()));
         output.extend(entries);
+        let content = output.join("\n");
+        if let Some(cache_key) = cache_key {
+            cache_manager.put(
+                cache_key,
+                content.as_bytes().to_vec(),
+                cache_manager.ttl_for(CacheableTool::ListDir),
+            );
+        }
         Ok(ToolOutput::Function {
-            content: output.join("\n"),
+            content,
             content_items: None,
             success: Some(true),
         })

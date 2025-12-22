@@ -8,6 +8,7 @@ use std::sync::atomic::Ordering;
 
 use crate::AuthManager;
 use crate::SandboxState;
+use crate::cache::manager::CacheManager;
 use crate::client_common::REVIEW_PROMPT;
 use crate::compact;
 use crate::compact::run_inline_auto_compact_task;
@@ -658,6 +659,7 @@ impl Session {
                     .map(Arc::new);
         }
         let state = SessionState::new(session_configuration.clone());
+        let cache_manager = Arc::new(CacheManager::new(config.cache.clone())?);
 
         let services = SessionServices {
             mcp_connection_manager: Arc::new(RwLock::new(McpConnectionManager::default())),
@@ -672,6 +674,7 @@ impl Session {
             models_manager: Arc::clone(&models_manager),
             tool_approvals: Mutex::new(ApprovalStore::default()),
             skills_manager,
+            cache_manager,
         };
 
         let sess = Arc::new(Session {
@@ -1579,6 +1582,10 @@ impl Session {
 
     pub(crate) fn user_shell(&self) -> Arc<shell::Shell> {
         Arc::clone(&self.services.user_shell)
+    }
+
+    pub(crate) fn cache_manager(&self) -> Arc<CacheManager> {
+        Arc::clone(&self.services.cache_manager)
     }
 
     fn show_raw_agent_reasoning(&self) -> bool {
@@ -3140,6 +3147,10 @@ mod tests {
 
         let state = SessionState::new(session_configuration.clone());
         let skills_manager = Arc::new(SkillsManager::new(config.codex_home.clone()));
+        let cache_manager = Arc::new(
+            CacheManager::new(config.cache.clone())
+                .unwrap_or_else(|err| panic!("cache manager init failed: {err}")),
+        );
 
         let services = SessionServices {
             mcp_connection_manager: Arc::new(RwLock::new(McpConnectionManager::default())),
@@ -3154,6 +3165,7 @@ mod tests {
             models_manager,
             tool_approvals: Mutex::new(ApprovalStore::default()),
             skills_manager,
+            cache_manager,
         };
 
         let turn_context = Session::make_turn_context(
@@ -3226,6 +3238,10 @@ mod tests {
 
         let state = SessionState::new(session_configuration.clone());
         let skills_manager = Arc::new(SkillsManager::new(config.codex_home.clone()));
+        let cache_manager = Arc::new(
+            CacheManager::new(config.cache.clone())
+                .unwrap_or_else(|err| panic!("cache manager init failed: {err}")),
+        );
 
         let services = SessionServices {
             mcp_connection_manager: Arc::new(RwLock::new(McpConnectionManager::default())),
@@ -3240,6 +3256,7 @@ mod tests {
             models_manager,
             tool_approvals: Mutex::new(ApprovalStore::default()),
             skills_manager,
+            cache_manager,
         };
 
         let turn_context = Arc::new(Session::make_turn_context(
