@@ -108,27 +108,35 @@ jobs:
           - runner: macos-14
             target: aarch64-apple-darwin
             profile: dev
+            use_sccache: true
           - runner: macos-14
             target: x86_64-apple-darwin
             profile: dev
+            use_sccache: true
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
             profile: dev
+            use_sccache: true
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             profile: dev
+            use_sccache: true
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             profile: dev
+            use_sccache: false
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             profile: dev
+            use_sccache: false
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
             profile: dev
+            use_sccache: false
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             profile: dev
+            use_sccache: false
 
           # Also run representative release builds on Mac and Linux because
           # there could be release-only build errors we want to catch.
@@ -137,15 +145,19 @@ jobs:
           - runner: macos-14
             target: aarch64-apple-darwin
             profile: release
+            use_sccache: true
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-musl
             profile: release
+            use_sccache: true
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
             profile: release
+            use_sccache: false
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             profile: release
+            use_sccache: false
 
     steps:
       - uses: actions/checkout@v6
@@ -342,7 +354,7 @@ jobs:
         working-directory: codex-rs
     env:
       # Speed up repeated builds across CI runs by caching compiled objects (non-Windows).
-      USE_SCCACHE: ${{ startsWith(matrix.runner, 'windows') && 'false' || 'true' }}
+      USE_SCCACHE: ${{ matrix.use_sccache }}
       CARGO_INCREMENTAL: "0"
       SCCACHE_CACHE_SIZE: 10G
 
