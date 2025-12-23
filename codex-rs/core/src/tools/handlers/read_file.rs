@@ -175,7 +175,7 @@ impl ToolHandler for ReadFileHandler {
         };
 
         if let Some(cache_key) = cache_key.as_ref()
-            && let Some(cached) = cache_manager.get(cache_key)
+            && let Some(cached) = cache_manager.get(cache_key, CacheableTool::ReadFile)
         {
             match String::from_utf8(cached) {
                 Ok(content) => {
@@ -207,6 +207,7 @@ impl ToolHandler for ReadFileHandler {
                 cache_key,
                 content.as_bytes().to_vec(),
                 cache_manager.ttl_for(CacheableTool::ReadFile),
+                CacheableTool::ReadFile,
             );
         }
         Ok(ToolOutput::Function {
