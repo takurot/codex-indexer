@@ -6,7 +6,7 @@ use crate::cache::LOG_TARGET;
 use crate::cache::config::CacheableTool;
 
 /// Lightweight metrics collector for cache operations.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct CacheTelemetry {
     overall: CacheCounters,
     by_tool: [CacheCounters; 3],
@@ -91,19 +91,6 @@ impl CacheTelemetry {
             evictions: overall.evictions,
             hit_rate: hit_rate(overall.hits, overall.misses),
             by_tool,
-        }
-    }
-}
-
-impl Default for CacheTelemetry {
-    fn default() -> Self {
-        Self {
-            overall: CacheCounters::default(),
-            by_tool: [
-                CacheCounters::default(),
-                CacheCounters::default(),
-                CacheCounters::default(),
-            ],
         }
     }
 }
