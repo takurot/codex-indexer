@@ -135,7 +135,7 @@ impl ToolHandler for ListDirHandler {
         };
 
         if let Some(cache_key) = cache_key.as_ref()
-            && let Some(cached) = cache_manager.get(cache_key)
+            && let Some(cached) = cache_manager.get(cache_key, CacheableTool::ListDir)
         {
             match String::from_utf8(cached) {
                 Ok(content) => {
@@ -164,6 +164,7 @@ impl ToolHandler for ListDirHandler {
                 cache_key,
                 content.as_bytes().to_vec(),
                 cache_manager.ttl_for(CacheableTool::ListDir),
+                CacheableTool::ListDir,
             );
         }
         Ok(ToolOutput::Function {

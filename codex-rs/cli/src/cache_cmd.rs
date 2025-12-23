@@ -5,6 +5,13 @@ use codex_core::config::Config;
 use codex_core::config::ConfigOverrides;
 
 #[derive(Debug, Parser)]
+pub(crate) struct CacheStatusArgs {
+    /// Show cache telemetry grouped by tool.
+    #[clap(long)]
+    pub(crate) by_tool: bool,
+}
+
+#[derive(Debug, Parser)]
 pub(crate) struct CacheCommand {
     #[command(subcommand)]
     pub(crate) subcommand: CacheSubcommand,
@@ -16,7 +23,7 @@ pub(crate) struct CacheCommand {
 #[derive(Debug, clap::Subcommand)]
 pub(crate) enum CacheSubcommand {
     /// Show cache status.
-    Status,
+    Status(CacheStatusArgs),
     /// Clear all cached entries.
     Clear,
 }
@@ -34,7 +41,7 @@ pub(crate) async fn run_cache_command(cmd: CacheCommand) -> anyhow::Result<()> {
     let cache_manager = CacheManager::new(config.cache)?;
 
     match cmd.subcommand {
-        CacheSubcommand::Status => {
+        CacheSubcommand::Status(args) => {
             let status = cache_manager.status()?;
             println!("Cache enabled: {}", status.enabled);
             println!("Cache dir: {}", status.dir.display());
@@ -44,6 +51,24 @@ pub(crate) async fn run_cache_command(cmd: CacheCommand) -> anyhow::Result<()> {
             match status.telemetry.hit_rate {
                 Some(rate) => println!("Hit rate: {:.1}%", rate * 100.0),
                 None => println!("Hit rate: n/a"),
+            }
+            if args.by_tool {
+                println!("By tool:");
+                for snapshot in &status.telemetry.by_tool {
+                    let hit_rate = snapshot
+                        .hit_rate
+                        .map(|rate| format!("{:.1}%", rate * 100.0))
+                        .unwrap_or_else(|| "n/a".to_string());
+                    println!(
+                        "  {}: hits={} misses={} stores={} evictions={} hit rate={}",
+                        snapshot.tool.config_key(),
+                        snapshot.hits,
+                        snapshot.misses,
+                        snapshot.stores,
+                        snapshot.evictions,
+                        hit_rate
+                    );
+                }
             }
         }
         CacheSubcommand::Clear => {

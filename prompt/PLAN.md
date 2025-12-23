@@ -17,7 +17,7 @@
 
 ### MVP（最短で価値が見える：キャッシュ + 手動索引 + /search）
 
-#### PR-0：土台（設定・保存場所・テレメトリ枠）
+#### [DONE]PR-0：土台（設定・保存場所・テレメトリ枠）
 
 * 状態：完了（branch: pr-0-foundation / tests: cargo test -p codex-core --lib cache::config, semantic::config, telemetry::tests, config::tests）
 * 目的：以降のPRで壊れない“置き場”を先に作る（feature flag / config / ストレージ抽象）
@@ -37,7 +37,7 @@
 * コマンドUI：まだ出さない（内部フラグのみ）
 * 備考：Rustログは `RUST_LOG` が効く前提でデバッグできるようにログカテゴリを切る ([GitHub][4])
 
-#### PR-1：増分キャッシュ（read_file / list_dir のみ）
+#### [DONE]PR-1：増分キャッシュ（read_file / list_dir のみ）
 
 * 状態：実装済み（read_file/list_dir のキャッシュ統合、ディスクLRUストア、CLI `cache status/clear` 追加、`docs/advanced.md` 更新）
 * テスト：`SHELL=/bin/bash CODEX_INTERNAL_ORIGINATOR_OVERRIDE=codex_cli_rs CARGO_INCREMENTAL=0 cargo test -p codex-core -- --test-threads=1` はローカルの120sタイムアウトで完走せず。`suite::approvals::approval_matrix_covers_all_modes` と `suite::tool_parallelism::shell_tools_start_before_response_completed_when_stream_delayed` は個別実行でパス。
@@ -65,8 +65,10 @@
   * `codex-rs/cli/src/cache_cmd.rs`（サブコマンド追加）
   * `codex-rs/cli/src/main.rs` にサブコマンド配線 ([Zenn][1])
 
-#### PR-2：増分キャッシュ（grep_files 追加）
+#### [DONE]PR-2：増分キャッシュ（grep_files 追加）
 
+* 状態：実装完了（branch: pr-2-grep-cache）
+* テスト：`CARGO_INCREMENTAL=0 cargo test -p codex-core grep_files::tests`、`CARGO_INCREMENTAL=0 cargo test -p codex-cli cache_status_reports_breakdown_by_tool`、`cargo test --all-features` は20分タイムアウト（ビルド後半まで進行）
 * 目的：grepは会話中に頻発しやすいので効果が大きい（ただし無効化しやすく）
 * 変更対象
 

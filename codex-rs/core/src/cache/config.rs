@@ -26,6 +26,14 @@ impl CacheableTool {
             CacheableTool::GrepFiles => "grep_files",
         }
     }
+
+    pub fn all() -> &'static [CacheableTool; 3] {
+        &[
+            CacheableTool::ReadFile,
+            CacheableTool::ListDir,
+            CacheableTool::GrepFiles,
+        ]
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

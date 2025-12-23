@@ -46,17 +46,17 @@ impl CacheManager {
         self.config.ttl_for(tool)
     }
 
-    pub fn get(&self, key: &str) -> Option<Vec<u8>> {
+    pub fn get(&self, key: &str, tool: CacheableTool) -> Option<Vec<u8>> {
         if !self.enabled() {
             return None;
         }
         match self.store.get(key) {
             Ok(Some(entry)) => {
-                self.telemetry.record_hit();
+                self.telemetry.record_hit(tool);
                 Some(entry.value)
             }
             Ok(None) => {
-                self.telemetry.record_miss();
+                self.telemetry.record_miss(tool);
                 None
             }
             Err(err) => {
@@ -66,16 +66,16 @@ impl CacheManager {
         }
     }
 
-    pub fn put(&self, key: String, value: Vec<u8>, ttl: Duration) {
+    pub fn put(&self, key: String, value: Vec<u8>, ttl: Duration, tool: CacheableTool) {
         if !self.enabled() {
             return;
         }
         let entry = CacheEntry { key, value, ttl };
         match self.store.put(entry) {
             Ok(CacheStorePutOutcome { evicted }) => {
-                self.telemetry.record_store();
+                self.telemetry.record_store(tool);
                 for _ in 0..evicted {
-                    self.telemetry.record_eviction();
+                    self.telemetry.record_eviction(tool);
                 }
             }
             Err(err) => {
