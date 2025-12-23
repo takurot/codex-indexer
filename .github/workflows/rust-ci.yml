@@ -97,7 +97,7 @@ jobs:
         working-directory: codex-rs
     env:
       # Speed up repeated builds across CI runs by caching compiled objects (non-Windows).
-      USE_SCCACHE: ${{ (startsWith(matrix.runner, 'windows') || matrix.target == 'aarch64-unknown-linux-gnu') && 'false' || 'true' }}
+      USE_SCCACHE: ${{ matrix.use_sccache || 'true' }}
       CARGO_INCREMENTAL: "0"
       SCCACHE_CACHE_SIZE: 10G
 
@@ -353,18 +353,23 @@ jobs:
           - runner: macos-14
             target: aarch64-apple-darwin
             profile: dev
+            use_sccache: true
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             profile: dev
+            use_sccache: true
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             profile: dev
+            use_sccache: false
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
             profile: dev
+            use_sccache: false
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             profile: dev
+            use_sccache: false
 
     steps:
       - uses: actions/checkout@v6
