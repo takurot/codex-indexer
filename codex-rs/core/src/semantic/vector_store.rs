@@ -258,7 +258,7 @@ impl VectorStore {
 }
 
 fn encode_embedding(embedding: &[f32]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(embedding.len() * std::mem::size_of::<f32>());
+    let mut buf = Vec::with_capacity(std::mem::size_of_val(embedding));
     for value in embedding {
         buf.extend_from_slice(&value.to_le_bytes());
     }
@@ -274,7 +274,7 @@ struct EmbeddingDecodeError {
 
 fn decode_embedding(bytes: &[u8]) -> std::result::Result<Vec<f32>, EmbeddingDecodeError> {
     let size = std::mem::size_of::<f32>();
-    if bytes.len() % size != 0 {
+    if !bytes.len().is_multiple_of(size) {
         return Err(EmbeddingDecodeError {
             len: bytes.len(),
             element_size: size,
