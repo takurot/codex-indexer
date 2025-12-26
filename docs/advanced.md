@@ -24,6 +24,10 @@ See the Rust documentation on [`RUST_LOG`](https://docs.rs/env_logger/latest/env
 
 Use `codex cache status` to inspect cached entries (count, size, hit rate) and `codex cache clear` to remove cached data.
 
+## Semantic index
+
+Use `codex index build` to generate a semantic index for the current workspace, `codex index stats` to inspect file/chunk counts and the embedding model, and `codex index clear` to remove the index.
+
 ## Model Context Protocol (MCP)
 
 The Codex CLI and IDE extension is a MCP client which means that it can be configured to connect to MCP servers. For more information, refer to the [`config docs`](./config.md#mcp-integration).
