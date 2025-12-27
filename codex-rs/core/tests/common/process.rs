@@ -4,7 +4,8 @@ use std::path::Path;
 use std::time::Duration;
 
 pub async fn wait_for_pid_file(path: &Path) -> anyhow::Result<String> {
-    let pid = tokio::time::timeout(Duration::from_secs(2), async {
+    let timeout_secs = pid_wait_timeout_secs();
+    let pid = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
         loop {
             if let Ok(contents) = fs::read_to_string(path) {
                 let trimmed = contents.trim();
@@ -40,9 +41,21 @@ async fn wait_for_process_exit_inner(pid: String) -> anyhow::Result<()> {
 
 pub async fn wait_for_process_exit(pid: &str) -> anyhow::Result<()> {
     let pid = pid.to_string();
-    tokio::time::timeout(Duration::from_secs(2), wait_for_process_exit_inner(pid))
-        .await
-        .context("timed out waiting for process to exit")??;
+    let timeout_secs = pid_wait_timeout_secs();
+    tokio::time::timeout(
+        Duration::from_secs(timeout_secs),
+        wait_for_process_exit_inner(pid),
+    )
+    .await
+    .context("timed out waiting for process to exit")??;
 
     Ok(())
+}
+
+fn pid_wait_timeout_secs() -> u64 {
+    std::env::var("CODEX_TEST_PID_WAIT_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(5)
 }

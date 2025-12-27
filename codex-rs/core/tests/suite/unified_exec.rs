@@ -174,7 +174,7 @@ async fn unified_exec_intercepts_apply_patch_exec_command() -> Result<()> {
     let call_id = "uexec-apply-patch";
     let args = json!({
         "cmd": command,
-        "yield_time_ms": 250,
+        "yield_time_ms": 750,
     });
 
     let responses = vec![

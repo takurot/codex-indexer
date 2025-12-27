@@ -82,9 +82,11 @@
 
   * `codex cache status --by-tool`：read/list/grep の内訳
 
-#### PR-3：セマンティック索引（手動build・最小検索API）
+#### [DONE]PR-3：セマンティック索引（手動build・最小検索API）
 
 * 目的：まず「索引を作る→検索できる」を独立コマンドで成立させる（生成注入はまだ）
+* Current: `codex index build|stats|clear` と最小検索APIを追加、SQLiteベクタストアで保存
+* Tests: `cd codex-rs && cargo test -p codex-core`, `cd codex-rs && cargo test -p codex-cli`
 * 追加/変更
 
   * `codex-rs/core/src/semantic/index.rs`（チャンク化、メタ管理）
