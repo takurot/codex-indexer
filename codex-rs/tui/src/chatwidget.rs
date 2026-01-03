@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -62,6 +64,8 @@ use codex_core::protocol::ViewImageToolCallEvent;
 use codex_core::protocol::WarningEvent;
 use codex_core::protocol::WebSearchBeginEvent;
 use codex_core::protocol::WebSearchEndEvent;
+use codex_core::semantic::index::SearchHit;
+use codex_core::semantic::index::SemanticIndex;
 use codex_core::skills::model::SkillMetadata;
 use codex_protocol::ConversationId;
 use codex_protocol::account::PlanType;
@@ -97,6 +101,8 @@ use crate::bottom_pane::SelectionAction;
 use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::custom_prompt_view::CustomPromptView;
+use crate::bottom_pane::parse_positional_args;
+use crate::bottom_pane::parse_slash_name;
 use crate::bottom_pane::popup_consts::standard_popup_hint_line;
 use crate::clipboard_paste::paste_image_to_temp_png;
 use crate::diff_render::display_path_for;
@@ -129,7 +135,6 @@ use self::agent::spawn_agent_from_existing;
 mod session_header;
 use self::session_header::SessionHeader;
 use crate::streaming::controller::StreamController;
-use std::path::Path;
 
 use chrono::Local;
 use codex_common::approval_presets::ApprovalPreset;
@@ -1622,10 +1627,11 @@ impl ChatWidget {
                 match self.bottom_pane.handle_key_event(key_event) {
                     InputResult::Submitted(text) => {
                         // If a task is running, queue the user input to be sent after the turn completes.
-                        let user_message = UserMessage {
-                            text,
-                            image_paths: self.bottom_pane.take_recent_submission_images(),
-                        };
+                        let image_paths = self.bottom_pane.take_recent_submission_images();
+                        if self.try_handle_search_command(&text, &image_paths) {
+                            return;
+                        }
+                        let user_message = UserMessage { text, image_paths };
                         self.queue_user_message(user_message);
                     }
                     InputResult::Command(cmd) => {
@@ -1635,6 +1641,26 @@ impl ChatWidget {
                 }
             }
         }
+    }
+
+    fn try_handle_search_command(&mut self, text: &str, image_paths: &[PathBuf]) -> bool {
+        let first_line = text.lines().next().unwrap_or("");
+        let Some((name, rest)) = parse_slash_name(first_line) else {
+            return false;
+        };
+        if name != SlashCommand::Search.command() {
+            return false;
+        }
+        if !image_paths.is_empty() {
+            self.add_info_message("Attachments are ignored for /search.".to_string(), None);
+        }
+        let query = parse_positional_args(rest).join(" ").trim().to_string();
+        if query.is_empty() {
+            self.add_info_message("Usage: /search <query>".to_string(), None);
+            return true;
+        }
+        self.start_search(query);
+        true
     }
 
     pub(crate) fn attach_image(
@@ -1735,6 +1761,9 @@ impl ChatWidget {
                     };
                     tx.send(AppEvent::DiffResult(text));
                 });
+            }
+            SlashCommand::Search => {
+                self.add_info_message("Usage: /search <query>".to_string(), None);
             }
             SlashCommand::Mention => {
                 self.insert_str("@");
@@ -2232,6 +2261,32 @@ impl ChatWidget {
             .map(|session| session.command_display.clone())
             .collect();
         self.add_to_history(history_cell::new_unified_exec_sessions_output(sessions));
+    }
+
+    fn start_search(&mut self, query: String) {
+        let config = self.config.clone();
+        let auth_manager = self.auth_manager.clone();
+        let app_event_tx = self.app_event_tx.clone();
+        tokio::spawn(async move {
+            let index = SemanticIndex::new(
+                config.cwd.clone(),
+                config.semantic_index.clone(),
+                config.model_provider.clone(),
+                Some(auth_manager),
+            );
+            let top_k = config.semantic_index.retrieve.top_k;
+            let max_chars = config.semantic_index.retrieve.max_chars;
+            let cell: Box<dyn HistoryCell> = match index.search(&query, top_k).await {
+                Ok(hits) => {
+                    let results = build_search_results(config.cwd.as_path(), hits, max_chars);
+                    Box::new(history_cell::new_search_results_output(query, results))
+                }
+                Err(err) => Box::new(history_cell::new_error_event(format!(
+                    "Search failed: {err}"
+                ))),
+            };
+            app_event_tx.send(AppEvent::InsertHistoryCell(cell));
+        });
     }
 
     fn stop_rate_limit_poller(&mut self) {
@@ -3632,6 +3687,84 @@ fn extract_first_bold(s: &str) -> Option<String> {
         i += 1;
     }
     None
+}
+
+fn build_search_results(
+    workspace_root: &Path,
+    hits: Vec<SearchHit>,
+    max_chars: usize,
+) -> Vec<history_cell::SearchResult> {
+    hits.into_iter()
+        .map(|hit| {
+            let file_path = hit.file_path.clone();
+            let full_path = workspace_root.join(&file_path);
+            let snippet_result =
+                read_search_snippet_lines(&full_path, hit.start_line, hit.end_line, max_chars);
+            let (snippet, snippet_error) = match snippet_result {
+                Ok(lines) => (lines, None),
+                Err(err) => (Vec::new(), Some(err)),
+            };
+            history_cell::SearchResult {
+                file_path,
+                start_line: hit.start_line,
+                end_line: hit.end_line,
+                score: hit.score,
+                snippet,
+                snippet_error,
+            }
+        })
+        .collect()
+}
+
+fn read_search_snippet_lines(
+    path: &Path,
+    start_line: usize,
+    end_line: usize,
+    max_chars: usize,
+) -> Result<Vec<history_cell::SnippetLine>, String> {
+    let bytes = fs::read(path).map_err(|err| {
+        let path_display = path.display().to_string();
+        format!("failed to read {path_display}: {err}")
+    })?;
+    if bytes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let contents = String::from_utf8_lossy(&bytes);
+    let mut out = Vec::new();
+    let start = start_line.max(1);
+    let end = end_line.max(start);
+    let mut remaining = if max_chars == 0 {
+        usize::MAX
+    } else {
+        max_chars
+    };
+
+    for (idx, line) in contents.lines().enumerate() {
+        let line_number = idx + 1;
+        if line_number < start {
+            continue;
+        }
+        if line_number > end {
+            break;
+        }
+        if remaining == 0 && !out.is_empty() {
+            break;
+        }
+        let text = if remaining == usize::MAX || line.len() <= remaining {
+            line.to_string()
+        } else {
+            line.chars().take(remaining).collect()
+        };
+        if remaining != usize::MAX {
+            remaining = remaining.saturating_sub(text.len());
+        }
+        out.push(history_cell::SnippetLine { line_number, text });
+        if remaining == 0 {
+            break;
+        }
+    }
+
+    Ok(out)
 }
 
 async fn fetch_rate_limits(base_url: String, auth: CodexAuth) -> Option<RateLimitSnapshot> {

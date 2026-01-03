@@ -21,6 +21,7 @@ Control Codex’s behavior during an interactive session with slash commands.
 | `/compact`      | summarize conversation to prevent hitting the context limit                |
 | `/undo`         | ask Codex to undo a turn                                                   |
 | `/diff`         | show git diff (including untracked files)                                  |
+| `/search`       | search the semantic index                                                  |
 | `/mention`      | mention a file                                                             |
 | `/status`       | show current session configuration and token usage                         |
 | `/mcp`          | list configured MCP tools                                                  |

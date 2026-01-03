@@ -60,6 +60,8 @@ pub(crate) use experimental_features_view::BetaFeatureItem;
 pub(crate) use experimental_features_view::ExperimentalFeaturesView;
 pub(crate) use list_selection_view::SelectionAction;
 pub(crate) use list_selection_view::SelectionItem;
+pub(crate) use prompt_args::parse_positional_args;
+pub(crate) use prompt_args::parse_slash_name;
 
 /// Pane displayed in the lower half of the chat UI.
 pub(crate) struct BottomPane {

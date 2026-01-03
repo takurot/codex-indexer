@@ -26,7 +26,7 @@ Use `codex cache status` to inspect cached entries (count, size, hit rate) and `
 
 ## Semantic index
 
-Use `codex index build` to generate a semantic index for the current workspace, `codex index stats` to inspect file/chunk counts and the embedding model, and `codex index clear` to remove the index.
+Use `codex index build` to generate a semantic index for the current workspace, `codex index stats` to inspect file/chunk counts and the embedding model, and `codex index clear` to remove the index. Query it with `codex search "<query>"` or `/search <query>` in the TUI.
 
 ## Model Context Protocol (MCP)
 

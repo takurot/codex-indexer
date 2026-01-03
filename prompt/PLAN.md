@@ -105,9 +105,12 @@
   * `codex index stats`：ファイル数/チャンク数/最終更新/モデル名
   * `codex index clear`
 
-#### PR-4：/search（スラッシュコマンド）＋ CLI `codex search`
+#### [DONE]PR-4：/search（スラッシュコマンド）＋ CLI `codex search`
 
 * 目的：TUIユーザーにも価値が見える形で“セマンティック検索”を露出
+* 状態：完了（branch: pr-4-search-command）
+* Current: `codex search` CLI + `/search` TUI表示 + JSON出力 + README/docs 更新
+* Tests: `cd codex-rs && CARGO_INCREMENTAL=0 just fix -p codex-cli`, `cd codex-rs && CARGO_INCREMENTAL=0 just fix -p codex-tui`, `cd codex-rs && cargo test -p codex-cli`, `cd codex-rs && cargo test -p codex-tui`
 * 実装方針
 
   * まずは `codex search "<query>" --topk 10` を安定提供
