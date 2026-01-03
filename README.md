@@ -1,3 +1,8 @@
+> This repository is a fork of OpenAI's Codex CLI focused on faster codebase
+> discovery. It adds incremental caching for deterministic file tools plus a
+> semantic index and search flow (`codex index ...`, `codex search ...`, and
+> `/search <query>` in the TUI).
+
 <p align="center"><code>npm i -g @openai/codex</code><br />or <code>brew install --cask codex</code></p>
 
 <p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
@@ -32,6 +37,17 @@ Then simply run `codex` to get started:
 ```shell
 codex
 ```
+
+Additional commands in this fork:
+
+```shell
+codex index build
+codex index stats
+codex index clear
+codex search "your query"
+```
+
+In the interactive TUI, you can also run `/search <query>` to show results.
 
 If you're running into upgrade issues with Homebrew, see the [FAQ entry on brew upgrade codex](./docs/faq.md#brew-upgrade-codex-isnt-upgrading-me).
 

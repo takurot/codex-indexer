@@ -33,12 +33,14 @@ use supports_color::Stream;
 mod cache_cmd;
 mod index_cmd;
 mod mcp_cmd;
+mod search_cmd;
 #[cfg(not(windows))]
 mod wsl_paths;
 
 use crate::cache_cmd::CacheCommand;
 use crate::index_cmd::IndexCommand;
 use crate::mcp_cmd::McpCli;
+use crate::search_cmd::SearchCommand;
 
 use codex_core::config::Config;
 use codex_core::config::ConfigOverrides;
@@ -110,6 +112,9 @@ enum Subcommand {
 
     /// Manage the semantic index for this workspace.
     Index(IndexCommand),
+
+    /// Search the semantic index for this workspace.
+    Search(SearchCommand),
 
     /// Run commands within a Codex-provided sandbox.
     #[clap(visible_alias = "debug")]
@@ -572,6 +577,13 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
                 root_config_overrides.clone(),
             );
             index_cmd::run_index_command(index_cli).await?;
+        }
+        Some(Subcommand::Search(mut search_cli)) => {
+            prepend_config_flags(
+                &mut search_cli.config_overrides,
+                root_config_overrides.clone(),
+            );
+            search_cmd::run_search_command(search_cli).await?;
         }
         Some(Subcommand::Cloud(mut cloud_cli)) => {
             prepend_config_flags(

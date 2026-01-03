@@ -617,6 +617,107 @@ pub(crate) fn new_unified_exec_sessions_output(sessions: Vec<String>) -> Composi
     CompositeHistoryCell::new(vec![Box::new(command), Box::new(summary)])
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SnippetLine {
+    pub(crate) line_number: usize,
+    pub(crate) text: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SearchResult {
+    pub(crate) file_path: String,
+    pub(crate) start_line: usize,
+    pub(crate) end_line: usize,
+    pub(crate) score: f32,
+    pub(crate) snippet: Vec<SnippetLine>,
+    pub(crate) snippet_error: Option<String>,
+}
+
+#[derive(Debug)]
+struct SearchResultsCell {
+    results: Vec<SearchResult>,
+}
+
+impl SearchResultsCell {
+    fn new(results: Vec<SearchResult>) -> Self {
+        Self { results }
+    }
+}
+
+impl HistoryCell for SearchResultsCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        if width == 0 {
+            return Vec::new();
+        }
+
+        let wrap_width = width as usize;
+        let mut out: Vec<Line<'static>> = Vec::new();
+
+        if self.results.is_empty() {
+            out.push("  • No results found.".italic().into());
+            return out;
+        }
+
+        for result in &self.results {
+            let file_path = &result.file_path;
+            let start_line = result.start_line;
+            let end_line = result.end_line;
+            let score = result.score;
+            let header = Line::from(vec![
+                "  • ".into(),
+                format!("{file_path}:{start_line}-{end_line}").into(),
+                " ".into(),
+                format!("score={score:.3}").dim(),
+            ]);
+            let wrapped = word_wrap_line(&header, RtOptions::new(wrap_width));
+            push_owned_lines(&wrapped, &mut out);
+
+            if result.snippet.is_empty() {
+                let message = result
+                    .snippet_error
+                    .as_deref()
+                    .map(|err| format!("(snippet unavailable: {err})"))
+                    .unwrap_or_else(|| "(snippet unavailable)".to_string());
+                let line = Line::from(vec!["    ".into(), message.dim()]);
+                let wrapped = word_wrap_line(&line, RtOptions::new(wrap_width));
+                push_owned_lines(&wrapped, &mut out);
+                continue;
+            }
+
+            let line_width = end_line.to_string().len().max(1);
+            for snippet_line in &result.snippet {
+                let line_number = snippet_line.line_number;
+                let formatted_number = format!("{line_number:>line_width$}");
+                let prefix = Line::from(vec!["    ".into(), formatted_number.dim(), " | ".dim()]);
+                let subsequent_indent = Line::from(" ".repeat(prefix.width()));
+                let content = Line::from(snippet_line.text.clone());
+                let wrapped = word_wrap_line(
+                    &content,
+                    RtOptions::new(wrap_width)
+                        .initial_indent(prefix)
+                        .subsequent_indent(subsequent_indent),
+                );
+                push_owned_lines(&wrapped, &mut out);
+            }
+        }
+
+        out
+    }
+}
+
+pub(crate) fn new_search_results_output(
+    query: String,
+    results: Vec<SearchResult>,
+) -> CompositeHistoryCell {
+    let header = PrefixedWrappedHistoryCell::new(
+        Line::from(vec!["/search".magenta(), " ".into(), query.into()]),
+        "• ".dim(),
+        "  ",
+    );
+    let summary = SearchResultsCell::new(results);
+    CompositeHistoryCell::new(vec![Box::new(header), Box::new(summary)])
+}
+
 fn truncate_exec_snippet(full_cmd: &str) -> String {
     let mut snippet = match full_cmd.split_once('\n') {
         Some((first, _)) => format!("{first} ..."),
@@ -2021,6 +2122,40 @@ mod tests {
         let rendered = render_lines(&cell.transcript_lines(64)).join("\n");
 
         insta::assert_snapshot!(rendered);
+    }
+
+    #[test]
+    fn search_results_output_renders_hits() {
+        let results = vec![SearchResult {
+            file_path: "src/lib.rs".to_string(),
+            start_line: 10,
+            end_line: 11,
+            score: 0.42,
+            snippet: vec![
+                SnippetLine {
+                    line_number: 10,
+                    text: "fn alpha() {}".to_string(),
+                },
+                SnippetLine {
+                    line_number: 11,
+                    text: "fn beta() {}".to_string(),
+                },
+            ],
+            snippet_error: None,
+        }];
+        let cell = new_search_results_output("alpha beta".to_string(), results);
+        let rendered = render_lines(&cell.display_lines(80));
+
+        assert_eq!(
+            rendered,
+            vec![
+                "• /search alpha beta".to_string(),
+                "".to_string(),
+                "  • src/lib.rs:10-11 score=0.420".to_string(),
+                "    10 | fn alpha() {}".to_string(),
+                "    11 | fn beta() {}".to_string(),
+            ]
+        );
     }
 
     #[test]
