@@ -62,6 +62,8 @@ pub struct McpProcess {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
     pending_user_messages: VecDeque<JSONRPCNotification>,
+    pending_responses: VecDeque<JSONRPCResponse>,
+    pending_errors: VecDeque<JSONRPCError>,
 }
 
 impl McpProcess {
@@ -133,6 +135,8 @@ impl McpProcess {
             stdin,
             stdout,
             pending_user_messages: VecDeque::new(),
+            pending_responses: VecDeque::new(),
+            pending_errors: VecDeque::new(),
         })
     }
 
@@ -553,11 +557,11 @@ impl McpProcess {
                         || "failed to deserialize ServerRequest from JSONRPCRequest",
                     );
                 }
-                JSONRPCMessage::Error(_) => {
-                    anyhow::bail!("unexpected JSONRPCMessage::Error: {message:?}");
+                JSONRPCMessage::Error(err) => {
+                    self.enqueue_error(err);
                 }
-                JSONRPCMessage::Response(_) => {
-                    anyhow::bail!("unexpected JSONRPCMessage::Response: {message:?}");
+                JSONRPCMessage::Response(response) => {
+                    self.enqueue_response(response);
                 }
             }
         }
@@ -569,6 +573,14 @@ impl McpProcess {
     ) -> anyhow::Result<JSONRPCResponse> {
         eprintln!("in read_stream_until_response_message({request_id:?})");
 
+        if let Some(response) = self.take_pending_response_by_id(&request_id) {
+            return Ok(response);
+        }
+
+        if let Some(err) = self.take_pending_error_by_id(&request_id) {
+            anyhow::bail!("unexpected JSONRPCMessage::Error: {err:?}");
+        }
+
         loop {
             let message = self.read_jsonrpc_message().await?;
             match message {
@@ -579,13 +591,17 @@ impl McpProcess {
                 JSONRPCMessage::Request(_) => {
                     anyhow::bail!("unexpected JSONRPCMessage::Request: {message:?}");
                 }
-                JSONRPCMessage::Error(_) => {
-                    anyhow::bail!("unexpected JSONRPCMessage::Error: {message:?}");
-                }
-                JSONRPCMessage::Response(jsonrpc_response) => {
-                    if jsonrpc_response.id == request_id {
-                        return Ok(jsonrpc_response);
+                JSONRPCMessage::Error(err) => {
+                    if err.id == request_id {
+                        anyhow::bail!("unexpected JSONRPCMessage::Error: {err:?}");
                     }
+                    self.enqueue_error(err);
+                }
+                JSONRPCMessage::Response(response) => {
+                    if response.id == request_id {
+                        return Ok(response);
+                    }
+                    self.enqueue_response(response);
                 }
             }
         }
@@ -595,6 +611,14 @@ impl McpProcess {
         &mut self,
         request_id: RequestId,
     ) -> anyhow::Result<JSONRPCError> {
+        if let Some(err) = self.take_pending_error_by_id(&request_id) {
+            return Ok(err);
+        }
+
+        if let Some(response) = self.take_pending_response_by_id(&request_id) {
+            anyhow::bail!("unexpected JSONRPCMessage::Response: {response:?}");
+        }
+
         loop {
             let message = self.read_jsonrpc_message().await?;
             match message {
@@ -605,13 +629,17 @@ impl McpProcess {
                 JSONRPCMessage::Request(_) => {
                     anyhow::bail!("unexpected JSONRPCMessage::Request: {message:?}");
                 }
-                JSONRPCMessage::Response(_) => {
-                    // Keep scanning; we're waiting for an error with matching id.
+                JSONRPCMessage::Response(response) => {
+                    if response.id == request_id {
+                        anyhow::bail!("unexpected JSONRPCMessage::Response: {response:?}");
+                    }
+                    self.enqueue_response(response);
                 }
                 JSONRPCMessage::Error(err) => {
                     if err.id == request_id {
                         return Ok(err);
                     }
+                    self.enqueue_error(err);
                 }
             }
         }
@@ -639,11 +667,11 @@ impl McpProcess {
                 JSONRPCMessage::Request(_) => {
                     anyhow::bail!("unexpected JSONRPCMessage::Request: {message:?}");
                 }
-                JSONRPCMessage::Error(_) => {
-                    anyhow::bail!("unexpected JSONRPCMessage::Error: {message:?}");
+                JSONRPCMessage::Error(err) => {
+                    self.enqueue_error(err);
                 }
-                JSONRPCMessage::Response(_) => {
-                    anyhow::bail!("unexpected JSONRPCMessage::Response: {message:?}");
+                JSONRPCMessage::Response(response) => {
+                    self.enqueue_response(response);
                 }
             }
         }
@@ -664,5 +692,35 @@ impl McpProcess {
         if notification.method == "codex/event/user_message" {
             self.pending_user_messages.push_back(notification);
         }
+    }
+
+    fn take_pending_response_by_id(&mut self, request_id: &RequestId) -> Option<JSONRPCResponse> {
+        if let Some(pos) = self
+            .pending_responses
+            .iter()
+            .position(|response| response.id == *request_id)
+        {
+            return self.pending_responses.remove(pos);
+        }
+        None
+    }
+
+    fn take_pending_error_by_id(&mut self, request_id: &RequestId) -> Option<JSONRPCError> {
+        if let Some(pos) = self
+            .pending_errors
+            .iter()
+            .position(|err| err.id == *request_id)
+        {
+            return self.pending_errors.remove(pos);
+        }
+        None
+    }
+
+    fn enqueue_response(&mut self, response: JSONRPCResponse) {
+        self.pending_responses.push_back(response);
+    }
+
+    fn enqueue_error(&mut self, err: JSONRPCError) {
+        self.pending_errors.push_back(err);
     }
 }
